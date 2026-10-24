@@ -15,8 +15,6 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// ───────────────────────────── стили ─────────────────────────────
-
 var (
 	cAccent = lipgloss.Color("#FFB86C")
 	cCyan   = lipgloss.Color("#8BE9FD")
@@ -26,15 +24,15 @@ var (
 
 	stBanner = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#282A36")).
 			Background(cAccent).Padding(0, 2)
-	stSub    = lipgloss.NewStyle().Foreground(cMuted)
-	stTitle  = lipgloss.NewStyle().Bold(true).Foreground(cCyan)
-	stSel    = lipgloss.NewStyle().Bold(true).Foreground(cGreen)
-	stHdr    = lipgloss.NewStyle().Bold(true).Foreground(cAccent)
-	stErr    = lipgloss.NewStyle().Bold(true).Foreground(cRed)
-	stOK     = lipgloss.NewStyle().Foreground(cGreen)
-	stHelp   = lipgloss.NewStyle().Foreground(cMuted)
-	stPanel  = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(cMuted).Padding(0, 1)
-	ansiRe   = regexp.MustCompile(`\x1b\[[0-9;]*m`)
+	stSub   = lipgloss.NewStyle().Foreground(cMuted)
+	stTitle = lipgloss.NewStyle().Bold(true).Foreground(cCyan)
+	stSel   = lipgloss.NewStyle().Bold(true).Foreground(cGreen)
+	stHdr   = lipgloss.NewStyle().Bold(true).Foreground(cAccent)
+	stErr   = lipgloss.NewStyle().Bold(true).Foreground(cRed)
+	stOK    = lipgloss.NewStyle().Foreground(cGreen)
+	stHelp  = lipgloss.NewStyle().Foreground(cMuted)
+	stPanel = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(cMuted).Padding(0, 1)
+	ansiRe  = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 )
 
 // ───────────────────────────── меню ─────────────────────────────
