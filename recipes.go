@@ -1,19 +1,21 @@
 package main
 
-// Preset — готовая рецептура с типовыми параметрами.
+// Preset — готовая рецептура. Overrides меняют значения параметров модели
+// (по имени), Groups включают группы формул (например, «Сухарики»).
 type Preset struct {
-	Name   string
-	Desc   string
-	Recipe []Ingredient
-	Params Params
+	Name      string
+	Desc      string
+	Recipe    []Ingredient
+	Overrides map[string]float64
+	Groups    map[string]bool
 }
 
 func presets() []Preset {
-	mk := func(w, fm, razd float64, suh bool) Params {
-		p := DefaultParams()
-		p.WTesta, p.FlourMoisture, p.GRazd, p.CalcSuhariki = w, fm, razd, suh
-		return p
+	// ov — значения параметров для рецептуры; suh — считать ли сухарики.
+	ov := func(wt, wm, razd float64) map[string]float64 {
+		return map[string]float64{"Wt": wt, "Wm": wm, "GRazd": razd}
 	}
+	suh := map[string]bool{"Сухарики": true}
 	return []Preset{
 		{
 			"Хлеб «Злаковик новый»", "формовой, с расчётом сухариков (контрольный пример, стр. 14)",
@@ -28,7 +30,7 @@ func presets() []Preset {
 				{"Пшеница 3-го класса", 94.0, 12.0},
 				{"Вода/прочее сырьё", 7.5, 5.0},
 			},
-			mk(47.5, 14.5, 0.0, true),
+			ov(47.5, 14.5, 0.0), suh,
 		},
 		{
 			"Хлеб с томатной пастой", "формовой, с расчётом сухариков",
@@ -44,7 +46,7 @@ func presets() []Preset {
 				{"Чеснок сушёный", 2.0, 8.0},
 				{"Базилик сушёный", 1.0, 12.0},
 			},
-			mk(47.5, 14.5, 0.0, true),
+			ov(47.5, 14.5, 0.0), suh,
 		},
 		{
 			"Лепёшка «Майская»", "подовая, вариант 1 (таблица 8)",
@@ -55,7 +57,7 @@ func presets() []Preset {
 				{"Масло сливочное несоленое", 18.0, 16.0},
 				{"Сметана сухая", 2.37, 3.0},
 			},
-			mk(36.5, 13.0, 0.6, false),
+			ov(36.5, 13.0, 0.6), nil,
 		},
 		{
 			"Лепёшка «Зерновая»", "подовая, вариант 2 (таблица 8)",
@@ -67,7 +69,7 @@ func presets() []Preset {
 				{"Масло сливочное несоленое", 18.0, 16.0},
 				{"Сметана сухая", 2.37, 3.0},
 			},
-			mk(37.5, 13.0, 0.6, false),
+			ov(37.5, 13.0, 0.6), nil,
 		},
 		{
 			"Лепёшка «Облепиховая»", "подовая, вариант 3 (таблица 8)",
@@ -79,7 +81,7 @@ func presets() []Preset {
 				{"Масло сливочное несоленое", 18.0, 16.0},
 				{"Сметана сухая", 2.37, 3.0},
 			},
-			mk(36.5, 13.0, 0.6, false),
+			ov(36.5, 13.0, 0.6), nil,
 		},
 	}
 }
