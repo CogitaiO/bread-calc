@@ -2,9 +2,9 @@ package recipe
 
 // Ingredient — сырьё рецептуры: наименование, масса (кг) и влажность (%).
 type Ingredient struct {
-	Name     string
-	Mass     float64
-	Moisture float64
+	Name     string  `json:"name"`
+	Mass     float64 `json:"mass"`
+	Moisture float64 `json:"moisture"`
 }
 
 // Aggregates возвращает суммарную массу сырья и Σ(масса·влажность).
