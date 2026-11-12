@@ -450,6 +450,15 @@ func (a *App) resultTab() fyne.CanvasObject {
 }
 
 func (a *App) calculate() {
+	for _, p := range a.mdl.Params {
+		entry := a.paramEntries[p.ID]
+		if err := entry.Validate(); err != nil {
+			a.tabs.SelectIndex(1)
+			a.win.Canvas().Focus(entry)
+			dialog.ShowError(fmt.Errorf("параметр «%s»: %w", p.Title, err), a.win)
+			return
+		}
+	}
 	if len(a.items) == 0 {
 		dialog.ShowInformation("Рецептура пуста", "Добавьте хотя бы одно сырьё.", a.win)
 		return

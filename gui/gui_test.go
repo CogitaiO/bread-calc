@@ -58,6 +58,22 @@ func TestCalculateShowsResult(t *testing.T) {
 	}
 }
 
+func TestInvalidParameterBlocksCalculation(t *testing.T) {
+	a, _ := newTestApp(t, theme.VariantLight)
+	e := a.paramEntries["Wt"]
+	old := a.values["Wt"]
+	e.SetText("не число")
+	a.calculate()
+	if a.report != "" || a.tabs.SelectedIndex() != 1 || a.values["Wt"] != old {
+		t.Fatal("расчёт с некорректным параметром не должен выполняться")
+	}
+	e.SetText("47,5")
+	a.calculate()
+	if a.report == "" || a.tabs.SelectedIndex() != 2 {
+		t.Fatal("корректный параметр должен позволять расчёт")
+	}
+}
+
 func TestEmptyRecipeDoesNotCalculate(t *testing.T) {
 	a, _ := newTestApp(t, theme.VariantLight)
 	a.newRecipe()
