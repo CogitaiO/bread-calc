@@ -100,6 +100,38 @@ func TestResultInvalidatedWhenInputsChange(t *testing.T) {
 	}
 }
 
+func TestUnsavedChangesConfirmation(t *testing.T) {
+	a, _ := newTestApp(t, theme.VariantLight)
+	if a.hasRecipeChanges() {
+		t.Fatal("выбранный шаблон не должен считаться изменённым")
+	}
+	called := false
+	if d := a.confirmDiscard(func() { called = true }, nil); d != nil || !called {
+		t.Fatal("действие без изменений должно выполняться сразу")
+	}
+	a.paramEntries["Wt"].SetText("ошибка")
+	if !a.hasRecipeChanges() {
+		t.Fatal("некорректный ввод тоже является изменением")
+	}
+	called, cancelled := false, false
+	d := a.confirmDiscard(func() { called = true }, func() { cancelled = true })
+	if d == nil || called {
+		t.Fatal("изменённые данные требуют подтверждения")
+	}
+	d.Hide()
+	if !cancelled || called {
+		t.Fatal("отмена не должна продолжать действие")
+	}
+	a.paramEntries["Wt"].SetText(a.baseline.params["Wt"])
+	if a.hasRecipeChanges() {
+		t.Fatal("возврат исходного значения должен убрать признак изменений")
+	}
+	a.items[0].Mass++
+	if !a.hasRecipeChanges() {
+		t.Fatal("изменение рецептуры не обнаружено")
+	}
+}
+
 func TestEmptyRecipeDoesNotCalculate(t *testing.T) {
 	a, _ := newTestApp(t, theme.VariantLight)
 	a.newRecipe()

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -25,12 +26,15 @@ type App struct {
 	mdl  *engine.Model
 	path string // файл модели; "" — не сохранять на диск (тесты)
 
-	presets []recipe.Preset
-	name    string
-	items   []recipe.Ingredient
-	values  map[string]float64
-	groups  map[string]bool
-	report  string
+	presets         []recipe.Preset
+	name            string
+	items           []recipe.Ingredient
+	values          map[string]float64
+	groups          map[string]bool
+	report          string
+	baseline        recipeState
+	presetIndex     int
+	restoringPreset bool
 
 	tabs       *container.AppTabs
 	presetList *widget.List
@@ -57,12 +61,52 @@ type App struct {
 	bad          map[string]bool
 }
 
+type recipeState struct {
+	items  []recipe.Ingredient
+	params map[string]string
+	groups map[string]bool
+}
+
+func (a *App) currentRecipeState() recipeState {
+	s := recipeState{items: append([]recipe.Ingredient(nil), a.items...), params: map[string]string{}, groups: map[string]bool{}}
+	for id, entry := range a.paramEntries {
+		s.params[id] = entry.Text
+	}
+	for _, g := range a.mdl.Groups() {
+		s.groups[g] = a.groups[g]
+	}
+	return s
+}
+
+func (a *App) hasRecipeChanges() bool {
+	return !reflect.DeepEqual(a.baseline, a.currentRecipeState())
+}
+
+func (a *App) confirmDiscard(next func(), cancel func()) *dialog.ConfirmDialog {
+	if !a.hasRecipeChanges() {
+		next()
+		return nil
+	}
+	d := dialog.NewConfirm("Несохранённые изменения", "Изменения рецептуры и параметров будут потеряны. Сохранение рецептур пока не поддерживается. Продолжить?", func(ok bool) {
+		if ok {
+			next()
+		} else if cancel != nil {
+			cancel()
+		}
+	}, a.win)
+	d.SetConfirmText("Продолжить без сохранения")
+	d.SetDismissText("Отмена")
+	d.Show()
+	return d
+}
+
 // New создаёт интерфейс в окне win. path — файл модели для сохранения изменений.
 func New(win fyne.Window, mdl *engine.Model, path string) *App {
 	a := &App{win: win, mdl: mdl, path: path, recipeSel: -1, fSel: -1, pSel: -1,
-		presets: recipe.Presets(), bad: map[string]bool{}}
+		presets: recipe.Presets(), bad: map[string]bool{}, presetIndex: -1}
 	a.resetValues(nil, nil)
 	a.build()
+	win.SetCloseIntercept(func() { a.confirmDiscard(win.Close, nil) })
 	return a
 }
 
@@ -174,9 +218,11 @@ func (a *App) build() {
 			box.Objects[0].(*widget.Label).SetText(a.presets[i].Name)
 			box.Objects[1].(*widget.Label).SetText(a.presets[i].Desc)
 		})
-	a.presetList.OnSelected = a.loadPreset
+	a.presetList.OnSelected = a.requestPreset
 
-	newBtn := widget.NewButtonWithIcon("Новая рецептура", theme.ContentAddIcon(), a.newRecipe)
+	newBtn := widget.NewButtonWithIcon("Новая рецептура", theme.ContentAddIcon(), func() {
+		a.confirmDiscard(a.newRecipe, nil)
+	})
 	sidebar := container.NewBorder(
 		container.NewVBox(brand, tag, widget.NewSeparator()),
 		container.NewPadded(newBtn), nil, nil, a.presetList)
@@ -200,6 +246,7 @@ func (a *App) build() {
 
 	a.rebuildParams()
 	a.refreshModelViews()
+	a.baseline = a.currentRecipeState()
 	a.presetList.Select(0)
 }
 
@@ -217,6 +264,23 @@ func (a *App) loadPreset(i widget.ListItemID) {
 	a.rebuildParams()
 	a.setHeader(p.Name, p.Desc)
 	a.tabs.SelectIndex(0)
+	a.presetIndex = i
+	a.baseline = a.currentRecipeState()
+}
+
+func (a *App) requestPreset(i widget.ListItemID) {
+	if a.restoringPreset {
+		return
+	}
+	a.confirmDiscard(func() { a.loadPreset(i) }, func() {
+		a.restoringPreset = true
+		if a.presetIndex >= 0 {
+			a.presetList.Select(a.presetIndex)
+		} else {
+			a.presetList.UnselectAll()
+		}
+		a.restoringPreset = false
+	})
 }
 
 func (a *App) newRecipe() {
@@ -228,6 +292,8 @@ func (a *App) newRecipe() {
 	a.rebuildParams()
 	a.setHeader(a.name, "добавьте сырьё и нажмите «Рассчитать»")
 	a.tabs.SelectIndex(0)
+	a.presetIndex = -1
+	a.baseline = a.currentRecipeState()
 }
 
 // ───────────────────────────── вкладка «Рецептура» ─────────────────────────────
