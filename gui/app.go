@@ -247,8 +247,7 @@ func (a *App) build() {
 
 	head := container.NewVBox(a.title, a.subtitle)
 	main := container.NewBorder(container.NewPadded(head), nil, nil, nil, a.tabs)
-	split := container.NewHSplit(sidebar, main)
-	split.Offset = 0.25
+	split := newDeferredSplit(sidebar, main)
 	a.win.SetContent(split)
 
 	a.rebuildParams()
