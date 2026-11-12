@@ -19,6 +19,7 @@ type Document struct {
 }
 
 const DocumentVersion = 1
+const maxDocumentSize = 4 << 20
 
 func (d Document) Validate() error {
 	if d.Version != DocumentVersion {
@@ -47,11 +48,11 @@ func (d Document) Validate() error {
 
 func ReadDocument(r io.Reader) (Document, error) {
 	var d Document
-	data, err := io.ReadAll(io.LimitReader(r, (4<<20)+1))
+	data, err := io.ReadAll(io.LimitReader(r, maxDocumentSize+1))
 	if err != nil {
 		return Document{}, fmt.Errorf("не удалось прочитать рецептуру: %w", err)
 	}
-	if len(data) > 4<<20 {
+	if len(data) > maxDocumentSize {
 		return Document{}, fmt.Errorf("файл рецептуры слишком велик")
 	}
 	dec := json.NewDecoder(bytes.NewReader(data))
@@ -73,7 +74,18 @@ func WriteDocument(w io.Writer, d Document) error {
 	if err := d.Validate(); err != nil {
 		return err
 	}
-	enc := json.NewEncoder(w)
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
 	enc.SetIndent("", "  ")
-	return enc.Encode(d)
+	if err := enc.Encode(d); err != nil {
+		return err
+	}
+	if buf.Len() > maxDocumentSize {
+		return fmt.Errorf("файл рецептуры слишком велик")
+	}
+	n, err := w.Write(buf.Bytes())
+	if err == nil && n != buf.Len() {
+		return io.ErrShortWrite
+	}
+	return err
 }

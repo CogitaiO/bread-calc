@@ -62,13 +62,14 @@ type App struct {
 }
 
 type recipeState struct {
+	name   string
 	items  []recipe.Ingredient
 	params map[string]string
 	groups map[string]bool
 }
 
 func (a *App) currentRecipeState() recipeState {
-	s := recipeState{items: append([]recipe.Ingredient(nil), a.items...), params: map[string]string{}, groups: map[string]bool{}}
+	s := recipeState{name: a.name, items: append([]recipe.Ingredient(nil), a.items...), params: map[string]string{}, groups: map[string]bool{}}
 	for id, entry := range a.paramEntries {
 		s.params[id] = entry.Text
 	}
@@ -87,7 +88,7 @@ func (a *App) confirmDiscard(next func(), cancel func()) *dialog.ConfirmDialog {
 		next()
 		return nil
 	}
-	d := dialog.NewConfirm("Несохранённые изменения", "Изменения рецептуры и параметров будут потеряны. Сохранение рецептур пока не поддерживается. Продолжить?", func(ok bool) {
+	d := dialog.NewConfirm("Несохранённые изменения", "Изменения рецептуры и параметров будут потеряны. Чтобы сохранить их, отмените действие и нажмите «Сохранить рецептуру». Продолжить?", func(ok bool) {
 		if ok {
 			next()
 		} else if cancel != nil {
@@ -223,9 +224,13 @@ func (a *App) build() {
 	newBtn := widget.NewButtonWithIcon("Новая рецептура", theme.ContentAddIcon(), func() {
 		a.confirmDiscard(a.newRecipe, nil)
 	})
+	openBtn := widget.NewButtonWithIcon("Открыть рецептуру…", theme.FolderOpenIcon(), func() {
+		a.confirmDiscard(a.openRecipe, nil)
+	})
+	saveBtn := widget.NewButtonWithIcon("Сохранить рецептуру…", theme.DocumentSaveIcon(), a.saveRecipe)
 	sidebar := container.NewBorder(
-		container.NewVBox(brand, tag, widget.NewSeparator()),
-		container.NewPadded(newBtn), nil, nil, a.presetList)
+		container.NewVBox(brand, tag, widget.NewSeparator(), widget.NewLabel("Шаблоны")),
+		container.NewPadded(container.NewVBox(newBtn, openBtn, saveBtn)), nil, nil, a.presetList)
 
 	a.status = widget.NewLabel("")
 	a.status.Importance = widget.LowImportance
@@ -360,7 +365,8 @@ func (a *App) recipeTab() fyne.CanvasObject {
 	calc.Importance = widget.HighImportance
 
 	a.totals = widget.NewLabelWithStyle("", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
-	toolbar := container.NewHBox(addBtn, a.editBtn, a.delBtn, layout.NewSpacer(), calc)
+	rename := widget.NewButton("Название…", a.renameRecipe)
+	toolbar := container.NewHBox(addBtn, a.editBtn, a.delBtn, rename, layout.NewSpacer(), calc)
 	footer := container.NewVBox(widget.NewSeparator(), a.totals)
 	return container.NewBorder(container.NewPadded(toolbar), container.NewPadded(footer), nil, nil, a.recipeTable)
 }

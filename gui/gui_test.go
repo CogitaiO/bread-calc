@@ -132,6 +132,39 @@ func TestUnsavedChangesConfirmation(t *testing.T) {
 	}
 }
 
+func TestRecipeDocumentRestoresDataAndRejectsOtherModel(t *testing.T) {
+	a, _ := newTestApp(t, theme.VariantLight)
+	a.name = "Своя рецептура"
+	a.items[0].Mass = 7.5
+	a.paramEntries["Wt"].SetText("48,5")
+	doc, err := a.recipeDocument()
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.newRecipe()
+	if err := a.applyRecipeDocument(doc); err != nil {
+		t.Fatal(err)
+	}
+	if a.name != "Своя рецептура" || a.items[0].Mass != 7.5 || a.values["Wt"] != 48.5 || !a.groups["Сухарики"] || a.hasRecipeChanges() {
+		t.Fatal("рецептура, параметры или состояние сохранения не восстановлены")
+	}
+	delete(doc.Params, "Wt")
+	if err := a.applyRecipeDocument(doc); err == nil {
+		t.Fatal("несовместимая модель не обнаружена")
+	}
+	if a.values["Wt"] != 48.5 || a.items[0].Mass != 7.5 {
+		t.Fatal("ошибка открытия изменила текущую рецептуру")
+	}
+}
+
+func TestRecipeDocumentRejectsInvalidInput(t *testing.T) {
+	a, _ := newTestApp(t, theme.VariantLight)
+	a.paramEntries["Wt"].SetText("ошибка")
+	if _, err := a.recipeDocument(); err == nil {
+		t.Fatal("некорректный параметр нельзя сохранять")
+	}
+}
+
 func TestEmptyRecipeDoesNotCalculate(t *testing.T) {
 	a, _ := newTestApp(t, theme.VariantLight)
 	a.newRecipe()
