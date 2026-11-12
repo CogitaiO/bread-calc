@@ -106,6 +106,8 @@ const (
 	scResult
 	scFormulas
 	scDef
+	scFile
+	scConfirm
 )
 
 type model struct {
@@ -144,8 +146,16 @@ type model struct {
 	dIdx    int
 	dOld    string // прежнее имя редактируемого элемента ("" — новый)
 
-	vp     viewport.Model
-	report string
+	vp           viewport.Model
+	report       string
+	baseline     *recipeDocument
+	fileInput    textinput.Model
+	fileAction   string
+	fileBack     screen
+	pending      string
+	pendingIndex int
+	pendingPath  string
+	confirmBack  screen
 
 	msg   string
 	isErr bool
@@ -263,9 +273,22 @@ func (m *model) calculate() {
 }
 
 func (m *model) saveReport() {
+	if m.report == "" {
+		m.setMsg("Сначала выполните расчёт", true)
+		return
+	}
 	fn := "raschet_" + time.Now().Format("20060102_150405") + ".txt"
 	plain := ansiRe.ReplaceAllString(m.report, "")
-	if err := os.WriteFile(fn, []byte(plain), 0o644); err != nil {
+	f, err := os.OpenFile(fn, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if err != nil {
+		m.setMsg("Не удалось сохранить: "+err.Error(), true)
+		return
+	}
+	_, err = f.WriteString(plain)
+	if closeErr := f.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
 		m.setMsg("Не удалось сохранить: "+err.Error(), true)
 		return
 	}
@@ -281,8 +304,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.layout()
 		return m, nil
 	case tea.KeyMsg:
+		if m.screen == scConfirm {
+			return m.updateConfirmation(msg)
+		}
 		if msg.String() == "ctrl+c" {
-			return m, tea.Quit
+			return m, m.requestAction("quit")
 		}
 	}
 	switch m.screen {
@@ -298,6 +324,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateFormulas(msg)
 	case scDef:
 		return m.updateDef(msg)
+	case scFile:
+		return m.updateFile(msg)
 	default:
 		return m.updateResult(msg)
 	}
@@ -307,7 +335,9 @@ func (m model) updateMenu(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if k, ok := msg.(tea.KeyMsg); ok {
 		switch k.String() {
 		case "q":
-			return m, tea.Quit
+			return m, m.requestAction("quit")
+		case "o":
+			return m, m.requestAction("open")
 		case "enter":
 			it, ok := m.menu.SelectedItem().(menuItem)
 			if !ok {
@@ -316,18 +346,10 @@ func (m model) updateMenu(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.setMsg("", false)
 			switch {
 			case it.idx >= 0:
-				p := presets()[it.idx]
-				m.name = p.Name
-				m.recipe = append([]Ingredient(nil), p.Recipe...)
-				m.resetValues(p.Overrides, p.Groups)
-				m.cursor = 0
-				m.screen = scRecipe
+				m.pendingIndex = it.idx
+				return m, m.requestAction("preset")
 			case it.idx == -1:
-				m.name = "Новая рецептура"
-				m.recipe = nil
-				m.resetValues(nil, nil)
-				m.cursor = 0
-				m.screen = scRecipe
+				return m, m.requestAction("new")
 			default:
 				m.fBack = scMenu
 				m.screen = scFormulas
@@ -368,6 +390,8 @@ func (m model) updateRecipe(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if !ok {
 		return m, nil
 	}
+	prev := m.confirm
+	m.confirm = ""
 	switch k.String() {
 	case "up", "k":
 		if m.cursor > 0 {
@@ -383,6 +407,13 @@ func (m model) updateRecipe(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.openEdit(len(m.recipe) == 0)
 	case "d", "delete":
 		if len(m.recipe) > 0 {
+			if prev != "ingredient" {
+				m.confirm = "ingredient"
+				m.setMsg("Нажмите d ещё раз, чтобы удалить «"+m.recipe[m.cursor].Name+"».", false)
+				return m, nil
+			}
+			m.setMsg("", false)
+			m.invalidateReport()
 			m.recipe = append(m.recipe[:m.cursor], m.recipe[m.cursor+1:]...)
 			if m.cursor >= len(m.recipe) && m.cursor > 0 {
 				m.cursor--
@@ -405,11 +436,17 @@ func (m model) updateRecipe(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case "c":
 		m.back = scRecipe
 		m.calculate()
+	case "s":
+		return m, m.openFileInput("save")
+	case "o":
+		return m, m.requestAction("open")
+	case "n":
+		return m, m.openFileInput("rename")
 	case "esc":
 		m.setMsg("", false)
 		m.screen = scMenu
 	case "q":
-		return m, tea.Quit
+		return m, m.requestAction("quit")
 	}
 	return m, nil
 }
@@ -455,6 +492,7 @@ func (m model) updateEdit(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case e2 != nil || wet < 0 || wet > 100:
 				m.setMsg("Влажность — число от 0 до 100", true)
 			default:
+				m.invalidateReport()
 				ing := Ingredient{name, mass, wet}
 				if m.editNew || len(m.recipe) == 0 {
 					m.recipe = append(m.recipe, ing)
@@ -504,6 +542,8 @@ func (m *model) applyParamRows() error {
 	for i, p := range m.mdl.Params {
 		v, err := parseF(m.pRows[i].input.Value())
 		if err != nil {
+			m.pFocus = i
+			focusRow(m.pRows, i)
 			return fmt.Errorf("поле «%s»: введите число", p.Title)
 		}
 		vals[p.ID] = v
@@ -513,6 +553,7 @@ func (m *model) applyParamRows() error {
 		groups[g] = m.pRows[np+j].on
 	}
 	m.values, m.groups = vals, groups
+	m.invalidateReport()
 	return nil
 }
 
@@ -520,7 +561,10 @@ func (m model) updateParams(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if k, ok := msg.(tea.KeyMsg); ok {
 		switch k.String() {
 		case "esc":
-			_ = m.applyParamRows()
+			if err := m.applyParamRows(); err != nil {
+				m.setMsg(err.Error(), true)
+				return m, nil
+			}
 			m.setMsg("", false)
 			m.screen = scRecipe
 			return m, nil
@@ -565,7 +609,10 @@ func (m model) updateResult(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.saveReport()
 			return m, nil
 		case "q":
-			return m, tea.Quit
+			return m, m.requestAction("quit")
+		case "h":
+			m.savePrintableReport()
+			return m, nil
 		}
 	}
 	var cmd tea.Cmd
@@ -581,6 +628,7 @@ func (m *model) saveModel(nm *engine.Model, okMsg string) bool {
 		return false
 	}
 	m.mdl = nm
+	m.invalidateReport()
 	m.syncValues()
 	m.setMsg(okMsg, false)
 	return true
@@ -916,7 +964,7 @@ func (m model) View() string {
 	switch m.screen {
 	case scMenu:
 		return m.header("Расчёт выхода хлебобулочных изделий") + m.menu.View() +
-			m.footer("↑/↓ выбор • enter открыть • q выход")
+			m.footer("↑/↓ выбор • enter шаблон • o открыть файл • q выход")
 	case scRecipe:
 		return m.viewRecipe()
 	case scEdit:
@@ -933,10 +981,14 @@ func (m model) View() string {
 		return m.viewFormulas()
 	case scDef:
 		return m.viewDef()
+	case scFile:
+		return m.viewFile()
+	case scConfirm:
+		return m.header("Подтверждение") + m.footer("y продолжить • n/esc отмена")
 	default:
 		pct := fmt.Sprintf("%3.0f%%", m.vp.ScrollPercent()*100)
 		return m.header("Результат — "+m.name) + m.vp.View() +
-			m.footer("↑/↓ PgUp/PgDn прокрутка ("+pct+") • s сохранить в .txt • esc назад • m меню • q выход")
+			m.footer("↑/↓ PgUp/PgDn ("+pct+") • s TXT • h HTML для печати/PDF • esc назад • m меню • q выход")
 	}
 }
 
@@ -1028,7 +1080,7 @@ func (m model) viewRecipe() string {
 
 	return m.header(m.name) + stPanel.Render(strings.TrimRight(b.String(), "\n")) + "\n" +
 		stSub.Render(info) + "\n" +
-		m.footer("↑/↓ выбор • a добавить • e изменить • d удалить • p параметры • f формулы • c рассчитать • esc меню")
+		m.footer("↑/↓ выбор • a/e сырьё • d удалить (дважды) • p параметры • f формулы • c расчёт • s сохранить • o открыть • n название • esc меню")
 }
 
 func (m model) viewFormulas() string {

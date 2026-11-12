@@ -1,9 +1,11 @@
 package main
 
-import "breadcalc/recipe"
-
 // Ingredient — сырьё рецептуры: наименование, масса (кг) и влажность (%).
-type Ingredient = recipe.Ingredient
+type Ingredient struct {
+	Name     string
+	Mass     float64
+	Moisture float64
+}
 
 // aggregates возвращает суммарную массу сырья m_c и Σ(масса·влажность).
 // Сами формулы расчёта живут в пакете engine и в файле модели.

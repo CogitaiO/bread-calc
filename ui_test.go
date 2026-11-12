@@ -39,12 +39,144 @@ func key(s string) tea.Msg {
 		return tea.KeyMsg{Type: tea.KeyDown}
 	case "ctrl+s":
 		return tea.KeyMsg{Type: tea.KeyCtrlS}
+	case "ctrl+c":
+		return tea.KeyMsg{Type: tea.KeyCtrlC}
 	case "backspace":
 		return tea.KeyMsg{Type: tea.KeyBackspace}
 	case " ":
 		return tea.KeyMsg{Type: tea.KeySpace, Runes: []rune{' '}}
 	}
 	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
+}
+
+func TestRecipeSaveOpenAndCompatibility(t *testing.T) {
+	isolate(t)
+	m := openPreset(t, 0)
+	m.recipe[0].Mass = 7.5
+	m.values["Wt"] = 48.5
+	m.name = "Своя рецептура"
+	m = send(m, "s")
+	if m.screen != scFile {
+		t.Fatal("сохранение не открыто")
+	}
+	m.fileInput.SetValue("custom.json")
+	m = send(m, "enter")
+	if m.screen != scRecipe || m.hasChanges() {
+		t.Fatalf("не сохранено: %s", m.msg)
+	}
+	m.recipe[0].Mass = 1
+	m = send(m, "o")
+	if m.screen != scConfirm {
+		t.Fatal("нет предупреждения об изменениях")
+	}
+	m = send(m, "y")
+	if m.screen != scFile {
+		t.Fatal("не открылся ввод пути")
+	}
+	m.fileInput.SetValue("custom.json")
+	m = send(m, "enter")
+	if m.screen != scRecipe || m.name != "Своя рецептура" || m.recipe[0].Mass != 7.5 || m.values["Wt"] != 48.5 || !m.groups["Сухарики"] || m.hasChanges() {
+		t.Fatalf("рецептура не восстановлена: %s", m.msg)
+	}
+	m.mdl = m.mdl.WithoutParam("Wt")
+	if err := m.loadRecipeFile("custom.json"); err == nil {
+		t.Fatal("несовместимая модель принята")
+	}
+	if m.recipe[0].Mass != 7.5 {
+		t.Fatal("ошибка открытия изменила рецептуру")
+	}
+}
+
+func TestDiscardAndOverwriteConfirmation(t *testing.T) {
+	isolate(t)
+	m := openPreset(t, 0)
+	m.recipe[0].Mass++
+	m = send(m, "q")
+	if m.screen != scConfirm {
+		t.Fatal("выход без подтверждения")
+	}
+	m = send(m, "n")
+	if m.screen != scRecipe || !m.hasChanges() {
+		t.Fatal("отмена выхода потеряла данные")
+	}
+	if err := os.WriteFile("existing.json", []byte("original"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	m = send(m, "s")
+	m.fileInput.SetValue("existing.json")
+	m = send(m, "enter")
+	if m.screen != scConfirm {
+		t.Fatal("нет подтверждения перезаписи")
+	}
+	m = send(m, "n")
+	if b, _ := os.ReadFile("existing.json"); string(b) != "original" {
+		t.Fatal("файл изменён после отмены")
+	}
+	m = send(m, "enter", "y")
+	if m.screen != scRecipe || m.hasChanges() {
+		t.Fatalf("перезапись не выполнена: %s", m.msg)
+	}
+	if err := m.loadRecipeFile("existing.json"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestInvalidParameterCannotBeDiscardedByEscape(t *testing.T) {
+	isolate(t)
+	m := send(openPreset(t, 0), "p")
+	m.pRows[0].input.SetValue("не число")
+	m = send(m, "esc")
+	if m.screen != scParams || !m.isErr {
+		t.Fatal("ошибка параметра должна оставаться на экране")
+	}
+}
+
+func TestResultInvalidatedAndReportKeepsNames(t *testing.T) {
+	isolate(t)
+	m := openPreset(t, 0)
+	long := strings.Repeat("Длинное название ", 5)
+	m.recipe[0].Name = long
+	m = send(m, "c")
+	if !strings.Contains(m.report, long) {
+		t.Fatal("название обрезано")
+	}
+	m = send(m, "esc", "d", "d")
+	if m.report != "" {
+		t.Fatal("старый результат не сброшен")
+	}
+}
+
+func TestPrintableReportEscapesUserText(t *testing.T) {
+	isolate(t)
+	m := openPreset(t, 0)
+	m.name = "<script>test</script>"
+	m = send(m, "c", "h")
+	files, err := filepath.Glob("raschet_*.html")
+	if err != nil || len(files) != 1 {
+		t.Fatalf("файл HTML не создан: %v %v", files, err)
+	}
+	data, err := os.ReadFile(files[0])
+	if err != nil || strings.Contains(string(data), "<script>") || !strings.Contains(string(data), "&lt;script&gt;") {
+		t.Fatalf("небезопасный HTML: %v", err)
+	}
+}
+
+func TestChangedRecipeMenuSelectionNeedsConfirmation(t *testing.T) {
+	isolate(t)
+	m := openPreset(t, 0)
+	m.recipe[0].Mass++
+	m = send(m, "esc", "down", "enter")
+	if m.screen != scConfirm {
+		t.Fatal("смена шаблона без подтверждения")
+	}
+	m = send(m, "n")
+	if m.screen != scMenu || m.recipe[0].Mass != 3 {
+		t.Fatal("отмена потеряла изменения")
+	}
+	m = send(m, "enter", "y")
+	if m.screen != scRecipe || !strings.Contains(m.name, "томатной") || m.hasChanges() {
+		t.Fatal("шаблон не выбран после подтверждения")
+	}
 }
 
 func send(m model, keys ...string) model {
