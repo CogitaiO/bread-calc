@@ -74,6 +74,32 @@ func TestInvalidParameterBlocksCalculation(t *testing.T) {
 	}
 }
 
+func TestResultInvalidatedWhenInputsChange(t *testing.T) {
+	tests := []struct {
+		name   string
+		change func(*App)
+	}{
+		{"рецептура", func(a *App) { a.items[0].Mass++; a.afterRecipeChange() }},
+		{"параметр", func(a *App) { a.paramEntries["Wt"].SetText("48") }},
+		{"некорректный параметр", func(a *App) { a.paramEntries["Wt"].SetText("ошибка") }},
+		{"модель", func(a *App) { a.apply(a.mdl.Clone(), "") }},
+		{"шаблон", func(a *App) { a.loadPreset(1) }},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			a, _ := newTestApp(t, theme.VariantLight)
+			a.calculate()
+			if a.report == "" {
+				t.Fatal("нет исходного результата")
+			}
+			tc.change(a)
+			if a.report != "" {
+				t.Fatal("устаревший отчёт остался доступен")
+			}
+		})
+	}
+}
+
 func TestEmptyRecipeDoesNotCalculate(t *testing.T) {
 	a, _ := newTestApp(t, theme.VariantLight)
 	a.newRecipe()

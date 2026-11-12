@@ -142,6 +142,7 @@ func (a *App) apply(nm *engine.Model, msg string) {
 		}
 	}
 	a.mdl = nm
+	a.invalidateResult()
 	a.syncValues()
 	a.rebuildParams()
 	a.refreshModelViews()
@@ -299,6 +300,7 @@ func (a *App) recipeTab() fyne.CanvasObject {
 }
 
 func (a *App) afterRecipeChange() {
+	a.invalidateResult()
 	a.recipeSel = -1
 	a.recipeTable.UnselectAll()
 	a.recipeTable.Refresh()
@@ -384,6 +386,7 @@ func (a *App) paramsTab() fyne.CanvasObject {
 	a.paramsHost = container.NewVBox()
 	a.paramEntries = map[string]*widget.Entry{}
 	reset := widget.NewButtonWithIcon("Значения по умолчанию", theme.ViewRefreshIcon(), func() {
+		a.invalidateResult()
 		a.resetValues(nil, a.groups)
 		a.rebuildParams()
 	})
@@ -405,6 +408,7 @@ func (a *App) rebuildParams() {
 		e.SetText(fnum(a.values[id]))
 		e.Validator = numberValidator(math.Inf(-1), math.Inf(1))
 		e.OnChanged = func(s string) {
+			a.invalidateResult()
 			if v, err := parseNum(s); err == nil {
 				a.values[id] = v
 			}
@@ -429,7 +433,12 @@ func (a *App) rebuildParams() {
 		box := container.NewVBox()
 		for _, g := range gs {
 			g := g
-			c := widget.NewCheck("Считать: "+g, func(on bool) { a.groups[g] = on })
+			c := widget.NewCheck("Считать: "+g, func(on bool) {
+				if a.groups[g] != on {
+					a.invalidateResult()
+				}
+				a.groups[g] = on
+			})
 			c.SetChecked(a.groups[g])
 			box.Add(c)
 		}
@@ -447,6 +456,18 @@ func (a *App) resultTab() fyne.CanvasObject {
 	hint.Importance = widget.LowImportance
 	a.resultHost = container.NewStack(container.NewCenter(hint))
 	return a.resultHost
+}
+
+// invalidateResult не позволяет сохранить расчёт после изменения входных данных.
+func (a *App) invalidateResult() {
+	if a.report == "" || a.resultHost == nil {
+		return
+	}
+	a.report = ""
+	hint := widget.NewLabel("Данные изменены. Рассчитайте результат заново.")
+	hint.Wrapping = fyne.TextWrapWord
+	a.resultHost.Objects = []fyne.CanvasObject{container.NewCenter(hint)}
+	a.resultHost.Refresh()
 }
 
 func (a *App) calculate() {
@@ -532,6 +553,9 @@ func (a *App) buildResult(res *engine.Result) fyne.CanvasObject {
 }
 
 func (a *App) saveReport() {
+	if a.report == "" {
+		return
+	}
 	d := dialog.NewFileSave(func(w fyne.URIWriteCloser, err error) {
 		if err != nil {
 			dialog.ShowError(err, a.win)
