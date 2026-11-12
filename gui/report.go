@@ -2,6 +2,7 @@ package gui
 
 import (
 	"fmt"
+	"html"
 	"strings"
 
 	"breadcalc/engine"
@@ -22,7 +23,7 @@ func plainReport(name string, items []recipe.Ingredient, mdl *engine.Model, in e
 
 	fmt.Fprintf(&b, "ПОДРОБНЫЙ ПОШАГОВЫЙ РАСЧЁТ\n%s\n\nИзделие: %s\n\nРецептура\n", rule, name)
 	for i, ing := range items {
-		fmt.Fprintf(&b, "  %2d. %-52s %8.2f кг  %6.2f %%\n", i+1, trunc(ing.Name, 52), ing.Mass, ing.Moisture)
+		fmt.Fprintf(&b, "  %2d. %s — %.2f кг, %.2f %%\n", i+1, ing.Name, ing.Mass, ing.Moisture)
 	}
 	fmt.Fprintf(&b, "      Σ масса m_c = %s,  Σ(масса·влажность) = %s\n\nПараметры расчёта\n",
 		engine.FormatNumber(in.Mc), engine.FormatNumber(in.SumMW))
@@ -31,7 +32,7 @@ func plainReport(name string, items []recipe.Ingredient, mdl *engine.Model, in e
 		if !ok {
 			v = p.Value
 		}
-		fmt.Fprintf(&b, "  %-40s %s\n", trunc(p.Title, 40), withUnit(engine.FormatNumber(v), p.Unit))
+		fmt.Fprintf(&b, "  %s: %s\n", p.Title, withUnit(engine.FormatNumber(v), p.Unit))
 	}
 	for _, g := range mdl.Groups() {
 		state := "нет"
@@ -61,10 +62,11 @@ func plainReport(name string, items []recipe.Ingredient, mdl *engine.Model, in e
 	return b.String()
 }
 
-func trunc(s string, n int) string {
-	rs := []rune(s)
-	if len(rs) <= n {
-		return s
-	}
-	return string(rs[:n-1]) + "…"
+// printableReport можно открыть в браузере и напечатать или сохранить как PDF.
+func printableReport(report string) string {
+	return "<!doctype html>\n<html lang=\"ru\"><head><meta charset=\"utf-8\">" +
+		"<title>Расчёт BreadCalc</title><style>body{font-family:sans-serif;margin:2em}" +
+		"pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:11pt}" +
+		"@media print{body{margin:0}}</style></head><body><pre>" +
+		html.EscapeString(report) + "</pre></body></html>\n"
 }

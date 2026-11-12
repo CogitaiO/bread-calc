@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"html"
 	"image/png"
 	"os"
 	"path/filepath"
@@ -55,6 +56,22 @@ func TestCalculateShowsResult(t *testing.T) {
 		if !strings.Contains(a.report, want) {
 			t.Errorf("в отчёте нет %q", want)
 		}
+	}
+}
+
+func TestReportPreservesLongNamesAndEscapesHTML(t *testing.T) {
+	a, _ := newTestApp(t, theme.VariantLight)
+	longName := strings.Repeat("Длинное наименование ", 5) + "<script>сырьё</script>"
+	paramName := strings.Repeat("Название параметра ", 5)
+	a.items[0].Name = longName
+	a.mdl.Params[0].Title = paramName
+	a.calculate()
+	if !strings.Contains(a.report, longName) || !strings.Contains(a.report, paramName) {
+		t.Fatal("в отчёте обрезаны названия")
+	}
+	printable := printableReport(a.report)
+	if strings.Contains(printable, "<script>") || !strings.Contains(html.UnescapeString(printable), longName) {
+		t.Fatal("HTML-отчёт должен экранировать и сохранять пользовательский текст")
 	}
 }
 

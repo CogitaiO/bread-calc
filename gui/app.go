@@ -3,6 +3,7 @@ package gui
 import (
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"reflect"
 	"strconv"
@@ -13,6 +14,7 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
+	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
@@ -590,43 +592,48 @@ func (a *App) buildResult(res *engine.Result) fyne.CanvasObject {
 		id.Importance = widget.LowImportance
 		cards = append(cards, widget.NewCard("", "", container.NewVBox(name, id, val)))
 	}
-	steps := widget.NewList(
-		func() int { return len(res.Steps) },
-		func() fyne.CanvasObject {
-			t := widget.NewLabelWithStyle("Формула", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
-			e := widget.NewLabelWithStyle("выражение", fyne.TextAlignLeading, fyne.TextStyle{Monospace: true})
-			t.Truncation, e.Truncation = fyne.TextTruncateEllipsis, fyne.TextTruncateEllipsis
-			return container.NewVBox(t, e)
-		},
-		func(i widget.ListItemID, o fyne.CanvasObject) {
-			s := res.Steps[i]
-			box := o.(*fyne.Container)
-			head := s.Formula.Title
-			if s.Formula.Ref != "" {
-				head = s.Formula.Ref + "  " + head
-			}
-			box.Objects[0].(*widget.Label).SetText(head)
-			box.Objects[1].(*widget.Label).SetText(fmt.Sprintf("%s = %s = %s",
-				s.Formula.ID, s.Expanded, withUnit(engine.FormatNumber(s.Value), s.Formula.Unit)))
-		})
+	var stepItems []*widget.AccordionItem
+	for _, s := range res.Steps {
+		head := s.Formula.Title
+		if s.Formula.Ref != "" {
+			head = s.Formula.Ref + "  " + head
+		}
+		detail := widget.NewLabel(fmt.Sprintf("%s = %s\n= %s\n= %s",
+			s.Formula.ID, s.Formula.Expr, s.Expanded, withUnit(engine.FormatNumber(s.Value), s.Formula.Unit)))
+		detail.Wrapping = fyne.TextWrapWord
+		stepItems = append(stepItems, widget.NewAccordionItem(head, detail))
+	}
+	steps := widget.NewAccordion(stepItems...)
+	steps.MultiOpen = true
 
 	save := widget.NewButtonWithIcon("Сохранить отчёт…", theme.DocumentSaveIcon(), a.saveReport)
+	print := widget.NewButton("Для печати / PDF…", func() { a.saveReportFile(true) })
 	cp := widget.NewButtonWithIcon("Копировать", theme.ContentCopyIcon(), func() {
 		a.win.Clipboard().SetContent(a.report)
 		a.status.SetText("Отчёт скопирован в буфер обмена")
 	})
-	bottom := container.NewPadded(container.NewHBox(save, cp))
+	bottom := container.NewPadded(container.NewHBox(save, print, cp))
 
 	var top fyne.CanvasObject = layout.NewSpacer()
 	if len(cards) > 0 {
 		top = container.NewPadded(container.NewGridWithColumns(len(cards), cards...))
 	}
-	return container.NewBorder(top, bottom, nil, nil, steps)
+	return container.NewBorder(top, bottom, nil, nil, container.NewVScroll(steps))
 }
 
 func (a *App) saveReport() {
+	a.saveReportFile(false)
+}
+
+func (a *App) saveReportFile(printable bool) {
 	if a.report == "" {
 		return
+	}
+	content := a.report
+	ext := ".txt"
+	if printable {
+		content = printableReport(content)
+		ext = ".html"
 	}
 	d := dialog.NewFileSave(func(w fyne.URIWriteCloser, err error) {
 		if err != nil {
@@ -636,11 +643,20 @@ func (a *App) saveReport() {
 		if w == nil {
 			return
 		}
-		defer w.Close()
-		if _, err := w.Write([]byte(a.report)); err != nil {
-			dialog.ShowError(err, a.win)
+		n, writeErr := w.Write([]byte(content))
+		if writeErr == nil && n != len(content) {
+			writeErr = io.ErrShortWrite
+		}
+		closeErr := w.Close()
+		if writeErr != nil {
+			dialog.ShowError(writeErr, a.win)
+			return
+		}
+		if closeErr != nil {
+			dialog.ShowError(closeErr, a.win)
 		}
 	}, a.win)
-	d.SetFileName("raschet_" + time.Now().Format("20060102_150405") + ".txt")
+	d.SetFileName("raschet_" + time.Now().Format("20060102_150405") + ext)
+	d.SetFilter(storage.NewExtensionFileFilter([]string{ext}))
 	d.Show()
 }
