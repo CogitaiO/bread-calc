@@ -73,6 +73,22 @@ Debian/Ubuntu). Скрипт собирает приложение для тек
 создаёт кросс-платформенные архивы и не добавляет GUI в релиз автоматически.
 На Windows при нативной сборке укажите имя с расширением `.exe`.
 
+Для нативного Wayland в Linux используйте отдельную сборку (она предназначена
+для запуска в Wayland-сессии, а не в X11):
+
+```sh
+./build-gui.sh --wayland ./breadcalc-gui-wayland
+./breadcalc-gui-wayland
+# либо без отдельной сборки:
+go run -tags wayland ./cmd/breadcalc-gui
+```
+
+Дополнительно нужны заголовки Wayland, EGL и xkbcommon (в Debian/Ubuntu:
+`libwayland-dev libegl1-mesa-dev libxkbcommon-dev`). Сборка без `--wayland`
+по-прежнему использует X11 и может работать через XWayland. Переход на нативный
+Wayland не гарантирует устранение размытия: это зависит также от шрифтов и
+настроек дисплея.
+
 ```
 go mod tidy
 go run .

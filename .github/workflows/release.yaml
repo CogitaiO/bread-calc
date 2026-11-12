@@ -15,11 +15,13 @@ jobs:
         with:
           go-version: "1.21"
       - name: Install GUI build dependencies
-        run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dev xorg-dev pkg-config
+        run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dev xorg-dev pkg-config libwayland-dev libxkbcommon-dev libegl1-mesa-dev
       - name: Test
         run: go test ./...
       - name: Verify GUI build
         run: ./build-gui.sh "${RUNNER_TEMP}/breadcalc-gui"
+      - name: Verify native Wayland GUI build
+        run: ./build-gui.sh --wayland "${RUNNER_TEMP}/breadcalc-gui-wayland"
       - name: Build
         run: ./build.sh "${GITHUB_REF_NAME}"
       - name: Publish
