@@ -35,7 +35,7 @@ func BuildReport(name string, rec []Ingredient, mdl *engine.Model, in engine.Inp
 
 	fmt.Fprintf(&b, "%s\n", stSection.Render("Рецептура"))
 	for i, ing := range rec {
-		fmt.Fprintf(&b, "  %2d. %-52s %8.2f кг  %6.2f %%\n", i+1, truncate(ing.Name, 52), ing.Mass, ing.Moisture)
+		fmt.Fprintf(&b, "  %2d. %s — %.2f кг, %.2f %%\n", i+1, ing.Name, ing.Mass, ing.Moisture)
 	}
 	fmt.Fprintf(&b, "      Σ масса m_c = %s,  Σ(масса·влажность) = %s\n\n",
 		engine.FormatNumber(in.Mc), engine.FormatNumber(in.SumMW))
@@ -46,7 +46,7 @@ func BuildReport(name string, rec []Ingredient, mdl *engine.Model, in engine.Inp
 		if !ok {
 			v = p.Value
 		}
-		fmt.Fprintf(&b, "  %-40s %s\n", truncate(p.Title, 40), withUnit(engine.FormatNumber(v), p.Unit))
+		fmt.Fprintf(&b, "  %s: %s\n", p.Title, withUnit(engine.FormatNumber(v), p.Unit))
 	}
 	for _, g := range mdl.Groups() {
 		state := "нет"
